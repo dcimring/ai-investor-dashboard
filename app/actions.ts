@@ -22,13 +22,18 @@ export async function getStockData(ticker: string): Promise<StockData | { error:
     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
     const period1 = oneYearAgo.toISOString().split('T')[0];
 
-    // Fetch data in parallel
-    // using chart() instead of historical() as historical is deprecated/removed
-    const [quote, chartResult, searchResults] = await Promise.all([
-      yahooFinance.quote(cleanTicker),
-      yahooFinance.chart(cleanTicker, { period1, interval: '1d' }),
-      yahooFinance.search(cleanTicker, { newsCount: 10 }) as Promise<any>
-    ]);
+    // Helper to avoid rate limits
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Fetch data sequentially to avoid "Too Many Requests" (429) errors
+    // Yahoo often blocks parallel requests from the same IP
+    const quote = await yahooFinance.quote(cleanTicker);
+    await delay(200); // Small delay
+    
+    const chartResult = await yahooFinance.chart(cleanTicker, { period1, interval: '1d' });
+    await delay(200);
+
+    const searchResults = await yahooFinance.search(cleanTicker, { newsCount: 10 }) as any;
 
     // Map chart quotes to history format
     const history = chartResult.quotes.map((q: any) => ({
